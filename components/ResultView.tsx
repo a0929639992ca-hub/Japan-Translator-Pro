@@ -283,16 +283,18 @@ const MenuResultView = ({ data, originalImage }: { data: ReceiptAnalysis, origin
                  {detail.dishes.map((dish, i) => (
                      <div key={i} className="flex justify-between gap-4 pb-4 border-b border-amber-900/5 last:border-0">
                          <div className="flex-1">
-                             <div className="mb-1">
-                                 <div className="flex items-center gap-2 flex-wrap">
+                             <div className="mb-1.5">
+                                 <div className="flex items-center gap-2 flex-wrap mb-0.5">
                                      <h3 className="text-lg font-bold text-slate-800 leading-tight">{dish.name}</h3>
                                      {dish.tags?.map(tag => (
                                          <span key={tag} className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded border border-amber-200 whitespace-nowrap">{tag}</span>
                                      ))}
                                  </div>
-                                 {dish.originalName && <p className="text-xs text-amber-900/60 font-medium mt-0.5">{dish.originalName}</p>}
+                                 {dish.originalName && (
+                                     <p className="text-sm text-amber-900/60 font-medium font-serif">{dish.originalName}</p>
+                                 )}
                              </div>
-                             <p className="text-sm text-slate-500 leading-relaxed font-serif">{dish.description}</p>
+                             <p className="text-sm text-slate-500 leading-relaxed font-serif opacity-90">{dish.description}</p>
                          </div>
                          {dish.priceJpy > 0 && (
                             <div className="text-right">
