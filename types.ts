@@ -1,7 +1,9 @@
 export enum AnalysisMode {
+  AUTO = 'AUTO',         // AI 自動判斷
   RECEIPT = 'RECEIPT',
   PRODUCT = 'PRODUCT',
-  MENU = 'MENU'
+  MENU = 'MENU',
+  GENERAL = 'GENERAL'    // 一般翻譯 (路牌/公告/其他)
 }
 
 export interface ReceiptItem {
@@ -36,6 +38,13 @@ export interface MenuDetail {
   }[];
 }
 
+// 一般翻譯詳細資訊
+export interface GeneralDetail {
+  title: string;         // 標題/主題
+  summary: string;       // 重點摘要
+  translatedContent: string; // 完整翻譯內容
+}
+
 export interface ReceiptAnalysis {
   id?: string;           // 唯一識別碼
   userId?: string;       // 關聯的使用者 ID
@@ -50,6 +59,7 @@ export interface ReceiptAnalysis {
   items: ReceiptItem[];  // 商品列表 (收據模式用)
   productDetail?: ProductDetail; // 藥妝模式用
   menuDetail?: MenuDetail;       // 菜單模式用
+  generalDetail?: GeneralDetail; // 一般翻譯模式用
 }
 
 export interface User {

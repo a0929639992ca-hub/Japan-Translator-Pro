@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 import { ReceiptAnalysis, AnalysisMode } from '../types';
-import { Trash2, ShoppingBag, Clock, Cloud, Loader2, Download, UploadCloud, ShieldCheck, Pill, UtensilsCrossed, FileText } from 'lucide-react';
+import { Trash2, ShoppingBag, Clock, Cloud, Loader2, Download, UploadCloud, ShieldCheck, Pill, UtensilsCrossed, FileText, Languages } from 'lucide-react';
 import { deleteFromHistory, exportToICloud, importFromICloud } from '../services/historyService';
 
 interface HistoryListProps {
@@ -29,6 +29,9 @@ export const HistoryList: React.FC<HistoryListProps> = ({ history, onSelect, onU
     if (item.mode === AnalysisMode.MENU) {
         return item.menuDetail?.restaurantName || '未知餐廳';
     }
+    if (item.mode === AnalysisMode.GENERAL) {
+        return item.generalDetail?.title || '一般翻譯';
+    }
     const firstItem = item.items?.find(i => i.store && i.store !== '未知');
     return firstItem ? firstItem.store : 'Store';
   };
@@ -37,6 +40,7 @@ export const HistoryList: React.FC<HistoryListProps> = ({ history, onSelect, onU
       switch (mode) {
           case AnalysisMode.PRODUCT: return <Pill className="w-3 h-3" />;
           case AnalysisMode.MENU: return <UtensilsCrossed className="w-3 h-3" />;
+          case AnalysisMode.GENERAL: return <Languages className="w-3 h-3" />;
           default: return <FileText className="w-3 h-3" />;
       }
   };
@@ -45,6 +49,7 @@ export const HistoryList: React.FC<HistoryListProps> = ({ history, onSelect, onU
       switch (mode) {
           case AnalysisMode.PRODUCT: return "藥妝";
           case AnalysisMode.MENU: return "菜單";
+          case AnalysisMode.GENERAL: return "翻譯";
           default: return "收據";
       }
   };
@@ -130,6 +135,7 @@ export const HistoryList: React.FC<HistoryListProps> = ({ history, onSelect, onU
                           <span className={`text-xs font-bold px-1.5 py-0.5 rounded-md font-mono flex items-center gap-1 ${
                               record.mode === AnalysisMode.PRODUCT ? 'bg-emerald-100 text-emerald-700' :
                               record.mode === AnalysisMode.MENU ? 'bg-amber-100 text-amber-700' :
+                              record.mode === AnalysisMode.GENERAL ? 'bg-slate-100 text-slate-700' :
                               'bg-indigo-100 text-indigo-700'
                           }`}>
                               {getModeIcon(record.mode)} {getModeLabel(record.mode)}

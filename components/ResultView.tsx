@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useCallback } from 'react';
-import { ArrowLeft, Receipt, Calendar, Download, Loader2, Trash2, Clock, AlertTriangle, Info, Utensils, Heart } from 'lucide-react';
+import { ArrowLeft, Receipt, Calendar, Download, Loader2, Trash2, Clock, AlertTriangle, Info, Utensils, Heart, Languages } from 'lucide-react';
 import { ReceiptAnalysis, ReceiptItem, AnalysisMode } from '../types';
 import { toBlob } from 'html-to-image';
 
@@ -49,7 +49,7 @@ export const ResultView: React.FC<ResultViewProps> = ({ originalImage, data, onR
         try {
           await navigator.share({
             files: [file],
-            title: `日本${mode === 'PRODUCT' ? '藥妝' : mode === 'MENU' ? '菜單' : '購物'}翻譯`,
+            title: `日本${mode === 'PRODUCT' ? '藥妝' : mode === 'MENU' ? '菜單' : '翻譯'}記錄`,
           });
         } catch (err) {
           if ((err as Error).name !== 'AbortError') {
@@ -89,6 +89,8 @@ export const ResultView: React.FC<ResultViewProps> = ({ originalImage, data, onR
               return <ProductResultView data={data} originalImage={originalImage} />;
           case AnalysisMode.MENU:
               return <MenuResultView data={data} originalImage={originalImage} />;
+          case AnalysisMode.GENERAL:
+              return <GeneralResultView data={data} originalImage={originalImage} />;
           case AnalysisMode.RECEIPT:
           default:
               return <ReceiptResultView data={data} originalImage={originalImage} />;
@@ -312,6 +314,44 @@ const MenuResultView = ({ data, originalImage }: { data: ReceiptAnalysis, origin
                       <img src={originalImage} className="w-full rounded sepia-[.3]" alt="Menu" />
                  </div>
              )}
+        </div>
+    );
+}
+
+// --- 子組件：一般翻譯模式 (New) ---
+const GeneralResultView = ({ data, originalImage }: { data: ReceiptAnalysis, originalImage?: string | null }) => {
+    const detail = data.generalDetail || { title: '一般翻譯', summary: '', translatedContent: '' };
+    
+    return (
+        <div className="bg-[#FAFAFA]">
+            <div className="p-6 bg-white border-b border-slate-100">
+                <div className="flex items-center gap-3 mb-2">
+                    <div className="p-2 bg-slate-100 rounded-lg text-slate-600">
+                        <Languages className="w-5 h-5" />
+                    </div>
+                    <h2 className="text-xl font-bold text-slate-800">{detail.title}</h2>
+                </div>
+                {detail.summary && (
+                    <div className="mt-3 text-sm text-slate-500 font-medium bg-slate-50 p-3 rounded-lg border border-slate-100">
+                        💡 {detail.summary}
+                    </div>
+                )}
+            </div>
+            
+            <div className="p-6 space-y-6">
+                <div className="prose prose-sm prose-slate max-w-none">
+                    <div className="whitespace-pre-wrap leading-relaxed text-slate-700">
+                        {detail.translatedContent}
+                    </div>
+                </div>
+            </div>
+            
+            {originalImage && (
+                <div className="p-6 pt-0">
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">Source Image</p>
+                    <img src={originalImage} className="w-full rounded-xl shadow-sm border border-slate-100" alt="Source" />
+                </div>
+            )}
         </div>
     );
 }

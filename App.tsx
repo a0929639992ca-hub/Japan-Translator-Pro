@@ -10,11 +10,11 @@ import { analyzeImage } from './services/geminiService';
 import { saveReceiptToHistory, getHistory, deleteFromHistory, syncLocalToCloud } from './services/historyService';
 import { getCurrentUser, logout } from './services/authService';
 import { AppState, ReceiptAnalysis, User, AnalysisMode } from './types';
-import { AlertCircle, History, Calculator, PieChart, ScanLine, User as UserIcon, Check, RefreshCw, Cloud, CloudOff, Receipt, Pill, UtensilsCrossed } from 'lucide-react';
+import { AlertCircle, History, Calculator, PieChart, ScanLine, User as UserIcon, Check, RefreshCw, Cloud, CloudOff, Receipt, Pill, UtensilsCrossed, Sparkles } from 'lucide-react';
 
 const App: React.FC = () => {
   const [appState, setAppState] = useState<AppState>(AppState.IDLE);
-  const [analysisMode, setAnalysisMode] = useState<AnalysisMode>(AnalysisMode.RECEIPT);
+  const [analysisMode, setAnalysisMode] = useState<AnalysisMode>(AnalysisMode.AUTO);
   const [user, setUser] = useState<User | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [showToast, setShowToast] = useState(false);
@@ -74,14 +74,14 @@ const App: React.FC = () => {
 
       const result = await analyzeImage(base64Data, analysisMode, 'image/jpeg', rateToSend);
       
-      // 檢查結果有效性
-      if (analysisMode === AnalysisMode.RECEIPT && (!result.items || result.items.length === 0)) {
+      // 檢查結果有效性 (AUTO 模式下 result.mode 已經被修正為實際模式)
+      if (result.mode === AnalysisMode.RECEIPT && (!result.items || result.items.length === 0)) {
         throw new Error("AI 未能辨識出商品內容，請確保收據清晰。");
       }
-      if (analysisMode === AnalysisMode.PRODUCT && !result.productDetail) {
+      if (result.mode === AnalysisMode.PRODUCT && !result.productDetail) {
         throw new Error("AI 未能辨識出藥妝商品資訊。");
       }
-      if (analysisMode === AnalysisMode.MENU && !result.menuDetail) {
+      if (result.mode === AnalysisMode.MENU && !result.menuDetail) {
          throw new Error("AI 未能辨識出菜單內容。");
       }
 
@@ -194,23 +194,29 @@ const App: React.FC = () => {
         {appState === AppState.IDLE && (
           <div className="px-4 py-4 flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
             {/* 模式切換 Tabs */}
-            <div className="bg-slate-100 p-1 rounded-xl flex gap-1">
+            <div className="bg-slate-100 p-1 rounded-xl flex gap-1 overflow-x-auto no-scrollbar">
+                <ModeTab 
+                    active={analysisMode === AnalysisMode.AUTO} 
+                    onClick={() => setAnalysisMode(AnalysisMode.AUTO)} 
+                    label="AI 自動" 
+                    icon={Sparkles}
+                />
                 <ModeTab 
                     active={analysisMode === AnalysisMode.RECEIPT} 
                     onClick={() => setAnalysisMode(AnalysisMode.RECEIPT)} 
-                    label="收據記帳" 
+                    label="收據" 
                     icon={Receipt}
                 />
                 <ModeTab 
                     active={analysisMode === AnalysisMode.PRODUCT} 
                     onClick={() => setAnalysisMode(AnalysisMode.PRODUCT)} 
-                    label="藥妝翻譯" 
+                    label="藥妝" 
                     icon={Pill}
                 />
                 <ModeTab 
                     active={analysisMode === AnalysisMode.MENU} 
                     onClick={() => setAnalysisMode(AnalysisMode.MENU)} 
-                    label="菜單翻譯" 
+                    label="菜單" 
                     icon={UtensilsCrossed}
                 />
             </div>
@@ -227,7 +233,8 @@ const App: React.FC = () => {
                 <CameraCapture onCapture={handleCapture} />
             </div>
             
-            <p className="text-[10px] text-center text-slate-400 px-8 leading-relaxed">
+            <p className="text-[10px] text-center text-slate-400 px-8 leading-relaxed h-8">
+                {analysisMode === AnalysisMode.AUTO && "AI 自動判斷圖片類型 (收據/藥妝/菜單/翻譯)。"}
                 {analysisMode === AnalysisMode.RECEIPT && "拍攝日本收據，自動記帳並分類。"}
                 {analysisMode === AnalysisMode.PRODUCT && "拍攝藥妝包裝背面，翻譯成分與功效。"}
                 {analysisMode === AnalysisMode.MENU && "拍攝餐廳菜單，翻譯菜名與介紹。"}
@@ -313,14 +320,14 @@ const App: React.FC = () => {
 const ModeTab = ({ active, onClick, label, icon: Icon }: { active: boolean, onClick: () => void, label: string, icon: any }) => (
     <button 
         onClick={onClick} 
-        className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg transition-all ${
+        className={`flex-1 min-w-[80px] flex items-center justify-center gap-1.5 py-2.5 rounded-lg transition-all ${
             active 
             ? 'bg-white text-indigo-600 shadow-sm font-bold' 
             : 'text-slate-500 hover:bg-slate-200/50 font-medium'
         }`}
     >
-        <Icon className="w-4 h-4" />
-        <span className="text-xs">{label}</span>
+        <Icon className="w-3.5 h-3.5" />
+        <span className="text-xs whitespace-nowrap">{label}</span>
     </button>
 );
 
