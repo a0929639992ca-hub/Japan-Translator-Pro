@@ -1,8 +1,8 @@
 import { GoogleGenAI } from "@google/genai";
 import { ReceiptAnalysis, AnalysisMode } from "../types";
 
-// 改用 Gemini 3 Flash：這是最新的高效率模型，配額比 Pro 多，且比 2.5 更聰明
-const MODEL_NAME = 'gemini-3-flash-preview';
+// 切換至 Gemini 2.0 Flash 正式版：比 3-preview 更穩定，較不會出現 Quota 誤判或系統忙碌問題
+const MODEL_NAME = 'gemini-2.0-flash';
 
 const cleanJsonString = (text: string): string => {
   if (!text) return "";
@@ -52,16 +52,17 @@ export const analyzeImage = async (
     const ai = new GoogleGenAI({ apiKey });
     const targetRate = manualRate || 0.25;
 
+    let systemInstruction = "";
     let prompt = "";
 
-    // 定義各模式的 JSON 結構片段，供 AUTO 模式組合使用
+    // 定義各模式的 JSON 結構片段
     const receiptSchema = `
       "items": [
         {
           "category": "精品香氛/伴手禮/美妝保養/藥品保健/食品調味/零食雜貨/服飾配件/3C家電/其他",
           "store": "商店名",
-          "name": "中文品名",
-          "originalName": "日文原名",
+          "name": "中文品名 (翻譯)",
+          "originalName": "日文原名 (OCR辨識)",
           "priceTwd": 數字,
           "originalPriceJpy": 數字,
           "note": ""
@@ -86,8 +87,8 @@ export const analyzeImage = async (
         "dishes": [
            {
              "name": "中文菜名",
-             "originalName": "日文菜名原文 (請務必辨識)",
-             "description": "菜色介紹/食材/口感",
+             "originalName": "日文菜名原文 (OCR辨識)",
+             "description": "菜色介紹/食材/口感 (生動描述)",
              "priceJpy": 數字 (若無價格填 0),
              "tags": ["推薦", "辣", "素食", "人氣"] (根據圖片判斷)
            }
@@ -103,8 +104,11 @@ export const analyzeImage = async (
       }
     `;
 
+    // 根據模式設定 System Instruction (角色) 與 Prompt (任務)
     if (mode === AnalysisMode.AUTO) {
-        prompt = `你是一個全能的日本旅遊助手。請先判斷圖片的類型，並依據類型提取資料。
+        systemInstruction = "你是一個全能的日本旅遊助手。你的專長是精準辨識日本收據、藥妝說明、菜單以及一般路標公告。請將所有內容翻譯成台灣繁體中文。";
+        prompt = `請先判斷圖片的類型，並依據類型提取資料。
+        
         圖片類型判斷規則：
         1. 若是購物收據/發票，類型為 "RECEIPT"。
         2. 若是藥妝/商品包裝背後的說明標籤，類型為 "PRODUCT"。
@@ -118,18 +122,16 @@ export const analyzeImage = async (
           "date": "YYYY-MM-DD",
           "totalJpy": 0,
           "totalTwd": 0,
-          // 若 detectedMode 為 RECEIPT，請填寫 items，其他欄位留空或 null
           ${receiptSchema},
-          // 若 detectedMode 為 PRODUCT，請填寫 productDetail，其他欄位留空或 null
           ${productSchema},
-          // 若 detectedMode 為 MENU，請填寫 menuDetail，其他欄位留空或 null
           ${menuSchema},
-          // 若 detectedMode 為 GENERAL，請填寫 generalDetail，其他欄位留空或 null
           ${generalSchema}
         }
-        請確保所有中文翻譯皆為台灣繁體中文用語。`;
+        注意：根據 detectedMode 填寫對應欄位，其餘欄位請留空或 null。`;
+
     } else if (mode === AnalysisMode.RECEIPT) {
-        prompt = `你是一個收據辨識助手。請分析圖片中的日本收據，並嚴格依照以下 JSON 格式回傳報告（僅回傳 JSON）：
+        systemInstruction = "你是一個專業的記帳與收據辨識助手。請專注於金額與品項的精確 OCR 辨識。";
+        prompt = `請分析圖片中的日本收據，並嚴格依照以下 JSON 格式回傳：
         {
           "exchangeRate": ${targetRate},
           "date": "YYYY-MM-DD",
@@ -138,8 +140,10 @@ export const analyzeImage = async (
           "totalTwd": 數字,
           ${receiptSchema}
         }`;
+
     } else if (mode === AnalysisMode.PRODUCT) {
-        prompt = `你是一個專業的日本藥妝與商品翻譯專家。請分析圖片中的商品包裝或標籤（包含成分、功效、注意事項），並嚴格依照以下 JSON 格式回傳（僅回傳 JSON）：
+        systemInstruction = "你是一個專業的日本藥妝與商品翻譯專家。請幫助使用者理解商品的功效、成分與禁忌。";
+        prompt = `請分析圖片中的商品包裝或標籤，並嚴格依照以下 JSON 格式回傳：
         {
           "exchangeRate": ${targetRate},
           "date": "YYYY-MM-DD",
@@ -147,10 +151,11 @@ export const analyzeImage = async (
           "totalTwd": 0,
           "items": [],
           ${productSchema}
-        }
-        請將內容翻譯成通順的繁體中文 (台灣用語)。`;
+        }`;
+
     } else if (mode === AnalysisMode.MENU) {
-        prompt = `你是一個日本美食導遊。請分析圖片中的菜單，並嚴格依照以下 JSON 格式回傳（僅回傳 JSON）：
+        systemInstruction = "你是一個熱情的日本美食導遊。請用令人垂涎的文字翻譯菜單，讓使用者理解菜色特色。";
+        prompt = `請分析圖片中的菜單，並嚴格依照以下 JSON 格式回傳：
         {
           "exchangeRate": ${targetRate},
           "date": "YYYY-MM-DD",
@@ -158,10 +163,11 @@ export const analyzeImage = async (
           "totalTwd": 0,
           "items": [],
           ${menuSchema}
-        }
-        請將內容翻譯成通順的繁體中文 (台灣用語)，讓旅客能理解菜色。`;
+        }`;
+
     } else if (mode === AnalysisMode.GENERAL) {
-        prompt = `你是一個隨身翻譯助手。請分析圖片內容（如路牌、公告、說明書、海報等），並嚴格依照以下 JSON 格式回傳（僅回傳 JSON）：
+        systemInstruction = "你是一個隨身翻譯助手。請用清晰易懂的台灣繁體中文翻譯圖片內容。";
+        prompt = `請分析圖片內容，並嚴格依照以下 JSON 格式回傳：
         {
           "exchangeRate": ${targetRate},
           "date": "YYYY-MM-DD",
@@ -169,8 +175,7 @@ export const analyzeImage = async (
           "totalTwd": 0,
           "items": [],
           ${generalSchema}
-        }
-        請將內容翻譯成通順的繁體中文 (台灣用語)。`;
+        }`;
     }
 
     const response = await retryWithBackoff(async () => {
@@ -183,7 +188,9 @@ export const analyzeImage = async (
                 ],
             },
             config: {
-                temperature: 0.1,
+                // 使用 systemInstruction 可提升模型遵循指示的能力
+                systemInstruction: systemInstruction,
+                temperature: mode === AnalysisMode.MENU ? 0.3 : 0.1, // 菜單模式稍微增加創意度，收據模式保持精確
                 responseMimeType: "application/json",
             }
         });
@@ -200,7 +207,7 @@ export const analyzeImage = async (
     if (mode === AnalysisMode.AUTO && parsed.detectedMode) {
         finalMode = parsed.detectedMode as AnalysisMode;
     } else if (mode === AnalysisMode.AUTO) {
-        // Fallback if detectedMode is missing but AUTO was requested
+        // Fallback
         if (parsed.items && parsed.items.length > 0) finalMode = AnalysisMode.RECEIPT;
         else if (parsed.productDetail) finalMode = AnalysisMode.PRODUCT;
         else if (parsed.menuDetail) finalMode = AnalysisMode.MENU;
@@ -215,15 +222,15 @@ export const analyzeImage = async (
         items: parsed.items || []
     };
     
+    // 金額補正邏輯
     if (finalMode === AnalysisMode.RECEIPT) {
         if (!result.totalTwd) {
-            result.totalTwd = result.items.reduce((sum, item) => sum + (item.priceTwd || 0), 0);
+            result.totalTwd = result.items.reduce((sum: number, item: any) => sum + (item.priceTwd || 0), 0);
         }
         if (!result.totalJpy) {
-            result.totalJpy = result.items.reduce((sum, item) => sum + (item.originalPriceJpy || 0), 0);
+            result.totalJpy = result.items.reduce((sum: number, item: any) => sum + (item.originalPriceJpy || 0), 0);
         }
     } else {
-        // 非收據模式，金額通常為 0 或僅供參考
         result.totalTwd = result.totalTwd || 0;
         result.totalJpy = result.totalJpy || 0;
     }
@@ -233,7 +240,7 @@ export const analyzeImage = async (
     console.error("Gemini Analysis Error:", error);
     
     if (error?.status === 429 || error?.code === 429) {
-        throw new Error("API 使用量已達上限 (Quota Exceeded)。請稍等幾分鐘後再試。");
+        throw new Error("系統忙碌中 (429)。請稍候再試。");
     }
 
     if (error instanceof SyntaxError) {
@@ -246,7 +253,6 @@ export const analyzeImage = async (
 export const generateShoppingReport = async (history: ReceiptAnalysis[]): Promise<string> => {
   try {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    // 只分析收據模式的消費
     const receipts = history.filter(h => h.mode === AnalysisMode.RECEIPT || !h.mode);
     const summary = receipts.slice(0, 5).map(h => `${h.date}: 消費 NT$${h.totalTwd}`).join('\n');
     const prompt = `基於以下消費紀錄，寫一段親切幽默的分析報告（100字內）：\n${summary}`;
