@@ -1,8 +1,11 @@
 import { GoogleGenAI } from "@google/genai";
 import { ReceiptAnalysis, AnalysisMode } from "../types";
 
-// 切換至 Gemini 2.0 Flash 正式版：比 3-preview 更穩定，較不會出現 Quota 誤判或系統忙碌問題
-const MODEL_NAME = 'gemini-2.0-flash';
+// 定義模型池：主要與備援模型
+// 若主模型 (2.0-flash) 忙碌，自動切換至 Lite 版 (preview-02-05) 分散負載
+const PRIMARY_MODEL = 'gemini-2.0-flash';
+const FALLBACK_MODEL = 'gemini-2.0-flash-lite-preview-02-05';
+const MODELS = [PRIMARY_MODEL, FALLBACK_MODEL];
 
 const cleanJsonString = (text: string): string => {
   if (!text) return "";
@@ -20,21 +23,48 @@ const cleanJsonString = (text: string): string => {
   return text.trim();
 };
 
-async function retryWithBackoff<T>(
-  operation: () => Promise<T>,
-  retries: number = 2, 
-  delay: number = 2000 
-): Promise<T> {
+/**
+ * 帶有模型輪替與指數避讓的請求函數
+ * @param ai GoogleGenAI 實例
+ * @param config 生成設定
+ * @param attempt 當前重試次數 (0-based)
+ */
+async function generateWithRobustRetry(
+  ai: GoogleGenAI,
+  promptParams: any,
+  attempt: number = 0
+): Promise<any> {
+  // 根據重試次數決定使用哪個模型 (輪替策略)
+  // Attempt 0: Primary
+  // Attempt 1: Fallback
+  // Attempt 2: Primary
+  // Attempt 3: Fallback
+  const modelToUse = MODELS[attempt % MODELS.length];
+
   try {
-    return await operation();
+    // 若是重試，進行等待 (Exponential Backoff: 2s, 4s, 8s)
+    if (attempt > 0) {
+      const delay = Math.min(2000 * Math.pow(2, attempt - 1), 8000);
+      console.log(`[Retry ${attempt}] Switching to ${modelToUse}, waiting ${delay}ms...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+
+    return await ai.models.generateContent({
+      ...promptParams,
+      model: modelToUse
+    });
+
   } catch (error: any) {
     const status = error?.status || error?.code;
-    // 如果是 429 (Too Many Requests) 或 503 (Service Unavailable)，進行重試
-    if (retries > 0 && (status === 429 || status === 503 || status === 500)) {
-      console.warn(`API Error ${status}, retrying in ${delay}ms...`);
-      await new Promise(resolve => setTimeout(resolve, delay));
-      return retryWithBackoff(operation, retries - 1, delay * 1.5);
+    const isQuotaError = status === 429 || (error.message && error.message.includes('429'));
+    const isServerBusy = status === 503 || status === 500;
+
+    // 最多重試 3 次 (總共 4 次嘗試)
+    if ((isQuotaError || isServerBusy) && attempt < 3) {
+      console.warn(`Model ${modelToUse} failed with ${status}. Retrying...`);
+      return generateWithRobustRetry(ai, promptParams, attempt + 1);
     }
+    
     throw error;
   }
 }
@@ -178,22 +208,19 @@ export const analyzeImage = async (
         }`;
     }
 
-    const response = await retryWithBackoff(async () => {
-        return await ai.models.generateContent({
-            model: MODEL_NAME,
-            contents: {
-                parts: [
-                  { inlineData: { mimeType, data: base64Image } }, 
-                  { text: prompt }
-                ],
-            },
-            config: {
-                // 使用 systemInstruction 可提升模型遵循指示的能力
-                systemInstruction: systemInstruction,
-                temperature: mode === AnalysisMode.MENU ? 0.3 : 0.1, // 菜單模式稍微增加創意度，收據模式保持精確
-                responseMimeType: "application/json",
-            }
-        });
+    // 使用新的 robust retry 機制
+    const response = await generateWithRobustRetry(ai, {
+        contents: {
+            parts: [
+              { inlineData: { mimeType, data: base64Image } }, 
+              { text: prompt }
+            ],
+        },
+        config: {
+            systemInstruction: systemInstruction,
+            temperature: mode === AnalysisMode.MENU ? 0.3 : 0.1,
+            responseMimeType: "application/json",
+        }
     });
 
     const text = response.text || "";
@@ -207,7 +234,6 @@ export const analyzeImage = async (
     if (mode === AnalysisMode.AUTO && parsed.detectedMode) {
         finalMode = parsed.detectedMode as AnalysisMode;
     } else if (mode === AnalysisMode.AUTO) {
-        // Fallback
         if (parsed.items && parsed.items.length > 0) finalMode = AnalysisMode.RECEIPT;
         else if (parsed.productDetail) finalMode = AnalysisMode.PRODUCT;
         else if (parsed.menuDetail) finalMode = AnalysisMode.MENU;
@@ -239,8 +265,8 @@ export const analyzeImage = async (
   } catch (error: any) {
     console.error("Gemini Analysis Error:", error);
     
-    if (error?.status === 429 || error?.code === 429) {
-        throw new Error("系統忙碌中 (429)。請稍候再試。");
+    if (error?.status === 429 || error?.code === 429 || (error.message && error.message.includes('429'))) {
+        throw new Error("目前系統滿載中 (429)，已自動重試但仍忙碌。建議您稍等 30 秒後再試。");
     }
 
     if (error instanceof SyntaxError) {
@@ -257,7 +283,7 @@ export const generateShoppingReport = async (history: ReceiptAnalysis[]): Promis
     const summary = receipts.slice(0, 5).map(h => `${h.date}: 消費 NT$${h.totalTwd}`).join('\n');
     const prompt = `基於以下消費紀錄，寫一段親切幽默的分析報告（100字內）：\n${summary}`;
     const response = await ai.models.generateContent({
-      model: MODEL_NAME,
+      model: PRIMARY_MODEL,
       contents: prompt,
     });
     return response.text || "無法生成報告";
