@@ -29,6 +29,7 @@ export interface MenuDetail {
   restaurantName: string;// 餐廳名稱
   dishes: {
     name: string;        // 菜名
+    originalName?: string; // 日文原文 (New)
     description: string; // 介紹
     priceJpy: number;    // 價格
     tags: string[];      // 標籤 (推薦/辣/素食)

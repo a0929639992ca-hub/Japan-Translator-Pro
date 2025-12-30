@@ -105,6 +105,7 @@ export const analyzeImage = async (
             "dishes": [
                {
                  "name": "中文菜名",
+                 "originalName": "日文菜名原文 (請務必辨識)",
                  "description": "菜色介紹/食材/口感",
                  "priceJpy": 數字 (若無價格填 0),
                  "tags": ["推薦", "辣", "素食", "人氣"] (根據圖片判斷)
