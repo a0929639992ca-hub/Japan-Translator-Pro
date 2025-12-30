@@ -1,11 +1,14 @@
 import { GoogleGenAI } from "@google/genai";
 import { ReceiptAnalysis, AnalysisMode } from "../types";
 
-// 定義模型池：主要與備援模型
-// 若主模型 (2.0-flash) 忙碌，自動切換至 Lite 版 (preview-02-05) 分散負載
-const PRIMARY_MODEL = 'gemini-2.0-flash';
-const FALLBACK_MODEL = 'gemini-2.0-flash-lite-preview-02-05';
-const MODELS = [PRIMARY_MODEL, FALLBACK_MODEL];
+// 定義模型池：依序嘗試不同模型以避開單一模型的配額限制
+// 策略：優先使用 2.0 Flash 系列，若皆忙碌則回退至 1.5 Flash (獨立配額) 以確保服務可用性
+const MODELS = [
+  'gemini-2.0-flash',                    // Attempt 0: 首選正式版 (速度快、品質好)
+  'gemini-2.0-flash-lite-preview-02-05', // Attempt 1: 輕量化預覽版 (配額分流)
+  'gemini-2.0-flash-exp',                // Attempt 2: 實驗版 (可能有不同配額池)
+  'gemini-1.5-flash'                     // Attempt 3: 舊版穩定 Flash (獨立配額，最後防線)
+];
 
 const cleanJsonString = (text: string): string => {
   if (!text) return "";
@@ -34,18 +37,16 @@ async function generateWithRobustRetry(
   promptParams: any,
   attempt: number = 0
 ): Promise<any> {
-  // 根據重試次數決定使用哪個模型 (輪替策略)
-  // Attempt 0: Primary
-  // Attempt 1: Fallback
-  // Attempt 2: Primary
-  // Attempt 3: Fallback
-  const modelToUse = MODELS[attempt % MODELS.length];
+  // 確保索引不超出範圍
+  const modelIndex = attempt % MODELS.length;
+  const modelToUse = MODELS[modelIndex];
 
   try {
-    // 若是重試，進行等待 (Exponential Backoff: 2s, 4s, 8s)
+    // 若是重試，進行等待 (Exponential Backoff)
+    // 增加等待時間以提高成功率
     if (attempt > 0) {
-      const delay = Math.min(2000 * Math.pow(2, attempt - 1), 8000);
-      console.log(`[Retry ${attempt}] Switching to ${modelToUse}, waiting ${delay}ms...`);
+      const delay = [0, 2000, 4000, 6000][Math.min(attempt, 3)];
+      console.log(`[Retry ${attempt}/${MODELS.length - 1}] Switching to ${modelToUse}, waiting ${delay}ms...`);
       await new Promise(resolve => setTimeout(resolve, delay));
     }
 
@@ -56,15 +57,18 @@ async function generateWithRobustRetry(
 
   } catch (error: any) {
     const status = error?.status || error?.code;
-    const isQuotaError = status === 429 || (error.message && error.message.includes('429'));
-    const isServerBusy = status === 503 || status === 500;
+    const message = error?.message || "";
+    // 判斷是否為配額或伺服器錯誤 (包含 429, 503, 500)
+    const isQuotaError = status === 429 || message.includes('429') || message.includes('Quota');
+    const isServerBusy = status === 503 || status === 500 || message.includes('Overloaded');
 
-    // 最多重試 3 次 (總共 4 次嘗試)
-    if ((isQuotaError || isServerBusy) && attempt < 3) {
-      console.warn(`Model ${modelToUse} failed with ${status}. Retrying...`);
+    // 只要還有模型可以嘗試，就繼續重試
+    if ((isQuotaError || isServerBusy) && attempt < MODELS.length - 1) {
+      console.warn(`Model ${modelToUse} failed (${status}). Trying next model...`);
       return generateWithRobustRetry(ai, promptParams, attempt + 1);
     }
     
+    // 若所有模型都嘗試失敗，或遇到非重試類型的錯誤，則拋出
     throw error;
   }
 }
@@ -265,8 +269,10 @@ export const analyzeImage = async (
   } catch (error: any) {
     console.error("Gemini Analysis Error:", error);
     
-    if (error?.status === 429 || error?.code === 429 || (error.message && error.message.includes('429'))) {
-        throw new Error("目前系統滿載中 (429)，已自動重試但仍忙碌。建議您稍等 30 秒後再試。");
+    // 檢查是否有 429 或配額錯誤
+    const message = error?.message || "";
+    if (error?.status === 429 || error?.code === 429 || message.includes('429') || message.includes('Quota')) {
+        throw new Error("所有 AI 模型目前皆滿載。我們已嘗試 4 種不同的模型通道但皆無回應，請等待約 1 分鐘後再試。");
     }
 
     if (error instanceof SyntaxError) {
@@ -282,8 +288,9 @@ export const generateShoppingReport = async (history: ReceiptAnalysis[]): Promis
     const receipts = history.filter(h => h.mode === AnalysisMode.RECEIPT || !h.mode);
     const summary = receipts.slice(0, 5).map(h => `${h.date}: 消費 NT$${h.totalTwd}`).join('\n');
     const prompt = `基於以下消費紀錄，寫一段親切幽默的分析報告（100字內）：\n${summary}`;
-    const response = await ai.models.generateContent({
-      model: PRIMARY_MODEL,
+    
+    // 報告生成也使用 retry 機制，確保體驗
+    const response = await generateWithRobustRetry(ai, {
       contents: prompt,
     });
     return response.text || "無法生成報告";
