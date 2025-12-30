@@ -1,0 +1,7 @@
+{
+  "name": "Japan Translator Pro",
+  "description": "An app that analyzes Japanese shopping receipts to create a categorized expense report in TWD, handling tax-free rules and discounts.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

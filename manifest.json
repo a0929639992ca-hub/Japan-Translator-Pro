@@ -1,0 +1,21 @@
+{
+  "name": "Japan Shopping Organizer",
+  "short_name": "JapanShop",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#4f46e5",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/6408/6408888.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/6408/6408888.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
