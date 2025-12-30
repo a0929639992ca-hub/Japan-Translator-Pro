@@ -1,5 +1,5 @@
 import React from 'react';
-import { Loader2, Calculator, Globe, Tags } from 'lucide-react';
+import { Loader2, Sparkles, ScanLine, Languages } from 'lucide-react';
 
 export const LoadingScreen: React.FC = () => {
   return (
@@ -11,19 +11,19 @@ export const LoadingScreen: React.FC = () => {
         </div>
       </div>
       
-      <h2 className="text-2xl font-bold text-slate-800 mb-2">正在分析購物明細...</h2>
+      <h2 className="text-2xl font-bold text-slate-800 mb-2">正在分析圖片內容...</h2>
       <div className="flex flex-col gap-3 mt-2 max-w-xs mx-auto">
         <div className="flex items-center gap-3 text-slate-600 text-sm animate-pulse" style={{ animationDelay: '0s' }}>
-            <Globe className="w-4 h-4 text-blue-500" />
-            <span>查詢匯率與換算台幣</span>
+            <ScanLine className="w-4 h-4 text-blue-500" />
+            <span>識別圖片類型與文字內容</span>
         </div>
         <div className="flex items-center gap-3 text-slate-600 text-sm animate-pulse" style={{ animationDelay: '0.5s' }}>
-            <Tags className="w-4 h-4 text-amber-500" />
-            <span>商品智慧分類 (藥妝/零食/精品)</span>
+            <Languages className="w-4 h-4 text-amber-500" />
+            <span>進行智慧翻譯與匯率換算</span>
         </div>
         <div className="flex items-center gap-3 text-slate-600 text-sm animate-pulse" style={{ animationDelay: '1s' }}>
-            <Calculator className="w-4 h-4 text-green-500" />
-            <span>計算折扣與平均單價</span>
+            <Sparkles className="w-4 h-4 text-green-500" />
+            <span>整理資訊並生成分析報告</span>
         </div>
       </div>
     </div>
