@@ -1,13 +1,11 @@
 import { GoogleGenAI } from "@google/genai";
 import { ReceiptAnalysis, AnalysisMode } from "../types";
 
-// 定義模型池：依序嘗試不同模型以避開單一模型的配額限制
-// 策略：優先使用 2.0 Flash 系列，若皆忙碌則回退至 1.5 Flash (獨立配額) 以確保服務可用性
+// 根據要求切換回 Gemini 3 系列
+// 策略：優先使用 3.0 Flash Preview，若忙碌則嘗試 3.0 Pro Preview
 const MODELS = [
-  'gemini-2.0-flash',                    // Attempt 0: 首選正式版 (速度快、品質好)
-  'gemini-2.0-flash-lite-preview-02-05', // Attempt 1: 輕量化預覽版 (配額分流)
-  'gemini-2.0-flash-exp',                // Attempt 2: 實驗版 (可能有不同配額池)
-  'gemini-1.5-flash'                     // Attempt 3: 舊版穩定 Flash (獨立配額，最後防線)
+  'gemini-3-flash-preview', 
+  'gemini-3-pro-preview'
 ];
 
 const cleanJsonString = (text: string): string => {
@@ -43,9 +41,8 @@ async function generateWithRobustRetry(
 
   try {
     // 若是重試，進行等待 (Exponential Backoff)
-    // 增加等待時間以提高成功率
     if (attempt > 0) {
-      const delay = [0, 2000, 4000, 6000][Math.min(attempt, 3)];
+      const delay = [0, 2000, 5000][Math.min(attempt, 2)];
       console.log(`[Retry ${attempt}/${MODELS.length - 1}] Switching to ${modelToUse}, waiting ${delay}ms...`);
       await new Promise(resolve => setTimeout(resolve, delay));
     }
@@ -272,7 +269,7 @@ export const analyzeImage = async (
     // 檢查是否有 429 或配額錯誤
     const message = error?.message || "";
     if (error?.status === 429 || error?.code === 429 || message.includes('429') || message.includes('Quota')) {
-        throw new Error("所有 AI 模型目前皆滿載。我們已嘗試 4 種不同的模型通道但皆無回應，請等待約 1 分鐘後再試。");
+        throw new Error("目前 AI 系統滿載中。我們已嘗試切換備用模型通道但皆無回應，請等待約 1 分鐘後再試。");
     }
 
     if (error instanceof SyntaxError) {
@@ -289,8 +286,9 @@ export const generateShoppingReport = async (history: ReceiptAnalysis[]): Promis
     const summary = receipts.slice(0, 5).map(h => `${h.date}: 消費 NT$${h.totalTwd}`).join('\n');
     const prompt = `基於以下消費紀錄，寫一段親切幽默的分析報告（100字內）：\n${summary}`;
     
-    // 報告生成也使用 retry 機制，確保體驗
-    const response = await generateWithRobustRetry(ai, {
+    // 報告生成使用主要模型
+    const response = await ai.models.generateContent({
+      model: MODELS[0],
       contents: prompt,
     });
     return response.text || "無法生成報告";
